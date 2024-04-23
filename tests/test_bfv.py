@@ -259,7 +259,94 @@ class TestBFV(unittest.TestCase):
 
         # ensure that message_sum and dec are the same
         for i in range(len(message_sum.coefficients)):
-            self.assertEqual(message_sum.coefficients[i], dec.coefficients[i])
+            self.assertEqual(message_sum.coefficients[i], dec.coefficients[i])    
+
+    def test_eval_mul(self):
+        secret_key = self.bfv.SecretKeyGen()
+        e = self.bfv.rlwe.SampleFromErrorDistribution()
+        a = self.bfv.rlwe.Rq.sample_polynomial()
+        public_key = self.bfv.PublicKeyGen(secret_key, e, a)
+
+        message1 = self.bfv.rlwe.Rt.sample_polynomial()
+        message2 = self.bfv.rlwe.Rt.sample_polynomial()
+        message_mul = message1 * message2
+        message_mul.reduce_in_ring(self.bfv.rlwe.Rt)
+
+        e0_1 = self.bfv.rlwe.SampleFromErrorDistribution()
+        e1_1 = self.bfv.rlwe.SampleFromErrorDistribution()
+        u_1 = self.bfv.rlwe.SampleFromTernaryDistribution()
+
+        ciphertext1 = self.bfv.PubKeyEncrypt(
+            public_key, message1, e0_1, e1_1, u_1
+        )
+
+        e0_2 = self.bfv.rlwe.SampleFromErrorDistribution()
+        e1_2 = self.bfv.rlwe.SampleFromErrorDistribution()
+        u_2 = self.bfv.rlwe.SampleFromTernaryDistribution()
+
+        ciphertext2 = self.bfv.PubKeyEncrypt(
+            public_key, message2, e0_2, e1_2, u_2
+        )
+
+        ciphertext_mul = self.bfv.EvalMul(ciphertext1, ciphertext2)
+
+        # Ensure that the ciphertext_mul is a polynomial in Rq
+        # Ensure that the ciphertext_mul of the ciphertext are within the range [-(q-1)/2, (q-1)/2]
+        lower_bound = -(self.bfv.rlwe.Rq.modulus - 1) / 2 # inclusive
+        upper_bound = (self.bfv.rlwe.Rq.modulus - 1) / 2 # inclusive
+
+        for coeff in ciphertext_mul[0].coefficients:
+            self.assertTrue(
+                coeff >= lower_bound
+                and coeff <= upper_bound
+            )
+        for coeff in ciphertext_mul[1].coefficients:
+            self.assertTrue(
+                coeff >= lower_bound
+                and coeff <= upper_bound
+            )
+        # Ensure that the degree of the ciphertext_mul is at most n-1, which means the has at most n coefficients
+        self.assertTrue(len(ciphertext_mul[0].coefficients) <= self.bfv.rlwe.n)
+            
+        # decrypt ciphertext_mul
+        dec = self.bfv.Decrypt(secret_key, ciphertext_mul)
+
+        #　　eval_mulの定義がだめ？
+        # ensure that message_mul and dec are the same
+        for i in range(len(message_mul.coefficients)):
+            self.assertEqual(message_mul.coefficients[i], dec.coefficients[i])
+
+    def test_eval_const_mul(self):
+        secret_key = self.bfv.SecretKeyGen()
+        e = self.bfv.rlwe.SampleFromErrorDistribution()
+        a = self.bfv.rlwe.Rq.sample_polynomial()
+        public_key = self.bfv.PublicKeyGen(secret_key, e, a)
+
+        message1 = self.bfv.rlwe.Rt.sample_polynomial()
+        message2 = self.bfv.rlwe.Rt.sample_polynomial()
+        message_mul = message1 * message2
+        message_mul.reduce_in_ring(self.bfv.rlwe.Rt)
+
+        e0 = self.bfv.rlwe.SampleFromErrorDistribution()
+        e1 = self.bfv.rlwe.SampleFromErrorDistribution()
+        u_1 = self.bfv.rlwe.SampleFromTernaryDistribution()
+
+        ciphertext1 = self.bfv.PubKeyEncrypt(
+            public_key, message1, e0, e1, u_1)
+        
+        u_2 = self.bfv.rlwe.SampleFromTernaryDistribution()
+
+        const_ciphertext = self.bfv.PubKeyEncryptConst(
+            public_key, message2, u_2)
+
+        ciphertext_mul = self.bfv.EvalMul(ciphertext1, const_ciphertext)
+
+        # decrypt ciphertext_mul
+        dec = self.bfv.Decrypt(secret_key, ciphertext_mul)
+
+        # ensure that message_mul and dec are the same
+        for i in range(len(message_mul.coefficients)):
+            self.assertEqual(message_mul.coefficients[i], dec.coefficients[i])
 
 class TestBFVVWithCRT(unittest.TestCase):
     # The bigmodulus q is intepreted as a product of small moduli qis.
